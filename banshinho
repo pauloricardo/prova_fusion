@@ -1,0 +1,250 @@
+import { Component, ElementRef, OnDestroy, OnInit, ViewChild, Inject } from '@angular/core';
+import { BookEvent } from '../../../events/book/book.event';
+import { PlatformContract } from '../../../services/contracts/platform/platform.contract';
+
+@Component({
+    selector: 'app-resize',
+    templateUrl: './resize.template.html',
+    styleUrls: ['./resize.component.css']
+})
+export class ResizeComponent implements OnInit, OnDestroy {
+    @ViewChild('courtainContainer') courtainContainer: ElementRef;
+    @ViewChild('courtain') courtain: ElementRef;
+    @ViewChild('edgeTop') edgeTop: ElementRef;
+    @ViewChild('edgeLeft') edgeLeft: ElementRef;
+    @ViewChild('edgeRight') edgeRight: ElementRef;
+    @ViewChild('edgeBottom') edgeBottom: ElementRef;
+    @ViewChild('edgeSe') edgeSe: ElementRef;
+    @ViewChild('edgeNe') edgeNe: ElementRef;
+    @ViewChild('edgeNw') edgeNw: ElementRef;
+    @ViewChild('edgeSw') edgeSw: ElementRef;
+    @ViewChild('close') close: ElementRef;
+    header: Element | any;
+    footer: Element | any;
+
+    masterContainer: any;
+    cortina: any;
+    MIN_WIDTH: number = 200;
+    MIN_HEIGHT: number = 200;
+    windowWidth: any = window.innerWidth;
+    windowHeight: any = window.innerHeight;
+    dragging: Element = null;
+    bookType: any;
+    masterToImg: any;
+    topOffsetHeight = 0;
+    bottomOffsetHeight = 0;
+    rect: any = {
+        top: 0,
+        left: 2,
+        right: 2,
+        bottom: 0,
+        maxRight: 0,
+        maxBottom: 0
+    };
+    coord: any = { x: 0, y: 0 };
+    observables = [];
+    constructor(@Inject('PlatformService') private platform: PlatformContract, private bookEvent: BookEvent) {
+    }
+
+    bootstrapRect(header, footer) {
+        return {
+            top: header,
+            left: 0,
+            right: this.windowWidth,
+            bottom: (this.windowHeight - footer),
+            maxRight: this.windowWidth,
+            maxBottom: (this.windowHeight - footer)
+        };
+    }
+
+    bootstrapCourtain(rect) {
+        this.cortina.style.width = (rect.right - rect.left) + 'px';
+        this.cortina.style.height = (rect.bottom - rect.top) + 'px';
+        this.cortina.style.top = rect.top + 'px';
+        this.cortina.style.left = rect.left + 'px';
+
+    }
+
+    ngOnInit() {
+        this.cortina = this.courtain.nativeElement;
+        this.header = document.getElementById('legacyActionBar');
+        this.footer = document.getElementsByTagName('footer')[0];
+
+
+        this._attachInitialEvents(this.edgeTop.nativeElement);
+        this._attachInitialEvents(this.edgeBottom.nativeElement);
+        this._attachInitialEvents(this.edgeRight.nativeElement);
+        this._attachInitialEvents(this.edgeLeft.nativeElement);
+        this._attachInitialEvents(this.edgeNw.nativeElement);
+        this._attachInitialEvents(this.edgeSw.nativeElement);
+        this._attachInitialEvents(this.edgeNe.nativeElement);
+        this._attachInitialEvents(this.edgeSe.nativeElement);
+
+        this.onDeviceOrientation();
+        this.cortina.addEventListener('touchmove', this.moveHandler.bind(this));
+        document.body.addEventListener('mousemove', this.moveHandler.bind(this));
+        this.close.nativeElement.addEventListener('touchend', _ => {
+            this.bookEvent.EchoCourtainModal.emit(false);
+            this.hide();
+        });
+        this.close.nativeElement.addEventListener('mouseup', _ => {
+            this.bookEvent.EchoCourtainModal.emit(false);
+            this.hide();
+        });
+        this.observables.push(this.bookEvent.EchoBookReader.subscribe((emitted) => {
+            this.bookType = emitted.bookType;
+        }));
+        this.observables.push(this.bookEvent.EchoStartUserHotspot.subscribe(_ => {
+            this.hide();
+        }));
+        this.observables.push(this.bookEvent.EchoCourtain.subscribe((result) => {
+            if (!result) {
+                this.hide();
+            } else {
+                this.show();
+                this.topOffsetHeight = this.header.offsetHeight;
+                this.bottomOffsetHeight = this.footer.offsetHeight;
+            }
+            this.rect = this.bootstrapRect(this.topOffsetHeight, this.bottomOffsetHeight);
+            this.bootstrapCourtain(this.rect);
+        }));
+        this.observables.push(this.bookEvent.EchoHideBar.subscribe((tapped) => {
+            const headerHeight = this.header.offsetHeight;
+            if (tapped) {
+                this.topOffsetHeight = 0;
+                this.bottomOffsetHeight = 0;
+            } else {
+                this.topOffsetHeight = headerHeight;
+                this.bottomOffsetHeight = this.footer.offsetHeight;
+            }
+        }));
+        window.addEventListener('resize', () => {
+            this.windowResize();
+        });
+    }
+
+    _attachInitialEvents(container: any) {
+        container.addEventListener('touchstart', _ => this.dragging = container);
+        container.addEventListener('mousedown', _ => this.dragging = container);
+        container.addEventListener('touchend', _ => this.dragging = null);
+        container.addEventListener('mouseup', _ => this.dragging = null);
+    }
+
+    moveHandler(evt) {
+        evt.preventDefault();
+        evt.stopPropagation();
+        if (evt.type === 'mousemove') {
+            if (evt.buttons === 0 || !this.dragging) return;
+            this.coord.x = evt.clientX;
+            this.coord.y = evt.clientY;
+        }
+        if (evt.type === 'touchmove') {
+            if ((!evt.touches || evt.touches.length !== 1 || !this.dragging)) return;
+            this.coord.x = evt.touches[0].clientX;
+            this.coord.y = evt.touches[0].clientY;
+
+        }
+        switch (this.dragging.id) {
+            case 'edge-se':
+                this.changeRight(this.coord, this.rect);
+                this.changeBottom(this.coord, this.rect);
+                break;
+            case 'edge-ne':
+                this.changeTop(this.coord, this.rect);
+                this.changeRight(this.coord, this.rect);
+                break;
+            case 'edge-top':
+                this.changeTop(this.coord, this.rect);
+                break;
+            case 'edge-bottom':
+                this.changeBottom(this.coord, this.rect);
+                break;
+            case 'edge-right':
+                this.changeRight(this.coord, this.rect);
+                break;
+            case 'edge-left':
+                this.changeLeft(this.coord, this.rect);
+                break;
+            case 'edge-sw':
+                this.changeLeft(this.coord, this.rect);
+                this.changeBottom(this.coord, this.rect);
+                break;
+            case 'edge-nw':
+                this.changeTop(this.coord, this.rect);
+                this.changeLeft(this.coord, this.rect);
+                break;
+        }
+        this.bootstrapCourtain(this.rect);
+    }
+
+    changeTop(coord, rect) {
+        rect.top = coord.y;
+        if (rect.bottom - rect.top < this.MIN_HEIGHT)
+            rect.top = rect.bottom - this.MIN_HEIGHT;
+        if (rect.top < this.topOffsetHeight) rect.top = this.topOffsetHeight;
+    }
+
+    changeLeft(coord, rect) {
+        rect.left = coord.x;
+        if (rect.left < 0) rect.left = 0;
+        if (rect.right - rect.left < this.MIN_WIDTH)
+            rect.left = rect.right - this.MIN_WIDTH;
+    }
+
+    changeRight(coord, rect) {
+        rect.right = coord.x;
+        if (rect.right > rect.maxRight) rect.right = rect.maxRight;
+        if (rect.right - rect.left < this.MIN_WIDTH)
+            rect.right = rect.left + this.MIN_WIDTH;
+    }
+
+    changeBottom(coord, rect) {
+        rect.bottom = coord.y;
+        if (rect.bottom - rect.top < this.MIN_HEIGHT) {
+            rect.bottom = rect.top - this.MIN_HEIGHT;
+        }
+        if (rect.bottom > rect.maxBottom) rect.bottom = rect.maxBottom;
+    }
+
+    show() {
+        this.rect = this.bootstrapRect(this.topOffsetHeight, this.bottomOffsetHeight);
+        this.bootstrapCourtain(this.rect);
+        this.cortina.parentElement.style.display = 'block';
+    }
+
+    hide() {
+        this.rect = this.bootstrapRect(this.topOffsetHeight, this.bottomOffsetHeight);
+        this.bootstrapCourtain(this.rect);
+        this.cortina.parentElement.style.display = 'none';
+    }
+
+
+    onDeviceOrientation() {
+        window.addEventListener('orientationchange', (event) => {
+            setTimeout(() => {
+                this.rect = this.bootstrapRect(this.topOffsetHeight, this.bottomOffsetHeight);
+                this.bootstrapCourtain(this.rect);
+            }, 300);
+        });
+    }
+
+    ngOnDestroy() {
+        this.hide();
+        this.dragging = null;
+        for (let evt of this.observables) {
+            evt.unsubscribe();
+        }
+
+    }
+
+    windowResize() {
+        this.windowWidth = window.innerWidth;
+        this.windowHeight = window.innerHeight;
+
+        this.rect = this.bootstrapRect(this.header.clientHeight, this.bottomOffsetHeight);
+        this.bootstrapCourtain(this.rect);
+
+    }
+
+}
+
